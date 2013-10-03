@@ -466,7 +466,7 @@ ip_init() {
 		fi
 	fi
 
-	if [ "$IP_INC_GLOBAL" -gt 1 ] && ! ocf_is_true "$OCF_RESKEY_unique_clone_address"; then
+	if [ "$IP_INC_GLOBAL" -gt 1 ] && [ "$NIC" != "lo" ] && ! ocf_is_true "$OCF_RESKEY_unique_clone_address"; then
 		IP_CIP="yes"
 		IP_CIP_HASH="${OCF_RESKEY_clusterip_hash}"
 		if [ -z "$IF_MAC" ]; then
