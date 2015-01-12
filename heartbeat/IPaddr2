@@ -78,6 +78,8 @@ OCF_RESKEY_arp_interval_default=200
 OCF_RESKEY_arp_count_default=5
 OCF_RESKEY_arp_bg_default=true
 OCF_RESKEY_arp_mac_default="ffffffffffff"
+OCF_RESKEY_source_routing_table_default=""
+OCF_RESKEY_source_routing_gw_default=""
 
 : ${OCF_RESKEY_lvs_support=${OCF_RESKEY_lvs_support_default}}
 : ${OCF_RESKEY_lvs_ipv6_addrlabel=${OCF_RESKEY_lvs_ipv6_addrlabel_default}}
@@ -88,6 +90,8 @@ OCF_RESKEY_arp_mac_default="ffffffffffff"
 : ${OCF_RESKEY_arp_count=${OCF_RESKEY_arp_count_default}}
 : ${OCF_RESKEY_arp_bg=${OCF_RESKEY_arp_bg_default}}
 : ${OCF_RESKEY_arp_mac=${OCF_RESKEY_arp_mac_default}}
+: ${OCF_RESKEY_source_routing_table=${OCF_RESKEY_source_routing_table_default}}
+: ${OCF_RESKEY_source_routing_gw_default=${OCF_RESKEY_source_routing_gw_default}}
 #######################################################################
 
 SENDARP=$HA_BIN/send_arp
@@ -173,6 +177,14 @@ Broadcast address associated with the IP. If left empty, the script will
 determine this from the netmask.
 </longdesc>
 <shortdesc lang="en">Broadcast address</shortdesc>
+<content type="string" default=""/>
+</parameter>
+
+<parameter name="network" required="1">
+<longdesc lang="en">
+network address associated with the IP.
+</longdesc>
+<shortdesc lang="en">Network address</shortdesc>
 <content type="string" default=""/>
 </parameter>
 
@@ -324,6 +336,22 @@ IP address goes away.
 </longdesc>
 <shortdesc lang="en">Flush kernel routing table on stop</shortdesc>
 <content type="boolean" default="false"/>
+</parameter>
+
+<parameter name="source_routing_table">
+<longdesc lang="en">
+You can manage an additionnal routing table for source routing
+</longdesc>
+<shortdesc lang="en">Source routing table</shortdesc>
+<content type="string" default=""/>
+</parameter>
+
+<parameter name="source_routing_gw">
+<longdesc lang="en">
+The gateway to use in the source routing table
+</longdesc>
+<shortdesc lang="en">Source routing gateway</shortdesc>
+<content type="string" default=""/>
 </parameter>
 
 </parameters>
@@ -519,6 +547,12 @@ delete_interface () {
 
 	ocf_run $CMD || return $OCF_ERR_GENERIC
 
+	if [ ! -z "$OCF_RESKEY_source_routing_table" ]; then
+            ocf_log info "Removing source routing rule from $ipaddr to table $OCF_RESKEY_source_routing_table"
+            ocf_run $IP2UTIL -f $FAMILY rule del from $ipaddr table $OCF_RESKEY_source_routing_table || return $OCF_ERR_GENERIC
+	fi
+
+
 	if ocf_is_true $OCF_RESKEY_flush_routes; then
 	    ocf_run $IP2UTIL route flush cache
 	fi
@@ -565,6 +599,23 @@ add_interface () {
 	cmd="$IP2UTIL link set $iface up"
 	ocf_log info "$msg"
 	ocf_run $cmd || return $OCF_ERR_GENERIC
+
+        if [ ! -z "$OCF_RESKEY_source_routing_table" ]; then
+            ocf_log info "$IP2UTIL -f $FAMILY rule add from $ipaddr table $OCF_RESKEY_source_routing_table"
+            ocf_run $IP2UTIL -f $FAMILY rule add from $ipaddr table $OCF_RESKEY_source_routing_table || return $OCF_ERR_GENERIC
+            ocf_log info "$IP2UTIL -f $FAMILY route add to $OCF_RESKEY_network/$netmask dev $iface table $OCF_RESKEY_source_routing_table"
+	    ocf_run $IP2UTIL -f $FAMILY route add to $OCF_RESKEY_network/$netmask dev $iface table $OCF_RESKEY_source_routing_table
+	    if [ ! -z "$OCF_RESKEY_source_routing_gw" ]; then
+		via=""
+                viamsg="scope link"
+                if [ "$OCF_RESKEY_source_routing_gw" != "link" ]; then
+                    via="via $OCF_RESKEY_source_routing_gw"
+                    viamsg="$OCF_RESKEY_source_routing_gw"
+                fi
+		ocf_log info "$IP2UTIL -f $FAMILY route add default $via dev $iface table $OCF_RESKEY_source_routing_table"
+                ocf_run $IP2UTIL -f $FAMILY route add default $via dev $iface table $OCF_RESKEY_source_routing_table
+            fi
+	fi
 
 	return $OCF_SUCCESS
 }
